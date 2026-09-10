@@ -115,8 +115,13 @@
     <div id="prog-boxes"></div>
     <div class="sec">薄弱点 TOP5（按历史错题次数）</div>
     <ol id="weak" style="margin:0;padding-left:22px;"></ol>
-    <div class="sec"></div>
-    <div style="text-align:center;"><button id="btn-closeprog">关闭</button></div>
+    <div class="sec">进度云同步（每台设备第一次先点一次「上云」配好地址密钥）</div>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button id="btn-bak">备份进度到云</button>
+      <button id="btn-res">从云恢复进度</button>
+    </div>
+    <div id="bak-info" style="text-align:center;color:var(--dim);font-size:12px;margin-top:8px;"></div>
+    <div style="text-align:center;margin-top:10px;"><button id="btn-closeprog">关闭</button></div>
   </div>
 </div>
 
@@ -291,6 +296,7 @@ function showSummary() {
     : `错了 ${sessionWrong} 题，已记入错题日志。<br>点上方「上云」或「复制错题日志」，发给 kk 判案。`;
   $("progress").textContent = "完成";
   $("bar").firstElementChild.style.width = "100%";
+  backupState(false);  // 每轮结束自动静默备份
 }
 
 function showAllClear() {
@@ -394,7 +400,59 @@ function showProgress() {
   $("overlay").style.display = "flex";
 }
 
-$("btn-prog").onclick = showProgress;
+/* ===== 进度云备份/恢复（同一 Worker，/state 端点） ===== */
+function getCloudCfg() { return JSON.parse(localStorage.getItem("jpGrammarCloud") || "null"); }
+function statePack() {
+  return JSON.stringify({
+    v: 1, savedAt: Date.now(), stats,
+    days: JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"),
+  });
+}
+function updateBakInfo() {
+  const t = localStorage.getItem("jpGrammarLastBackup");
+  $("bak-info").textContent = t ? "上次备份：" + new Date(+t).toLocaleString() : "还没备份过";
+}
+async function backupState(manual) {
+  const cfg = getCloudCfg();
+  if (!cfg) { if (manual) alert("先点一次「上云」配置 Worker 地址和密钥。"); return; }
+  try {
+    const r = await fetch(cfg.url + "/state", {
+      method: "POST",
+      headers: { "content-type": "text/plain; charset=utf-8", "x-key": cfg.key },
+      body: statePack(),
+    });
+    if (r.ok) {
+      localStorage.setItem("jpGrammarLastBackup", String(Date.now()));
+      if (manual) alert("进度已备份到云。");
+      updateBakInfo();
+    } else if (manual) alert("备份失败：" + r.status);
+  } catch (e) { if (manual) alert("网络失败：" + e.message); }
+}
+async function restoreState(manual) {
+  const cfg = getCloudCfg();
+  if (!cfg) { if (manual) alert("先点一次「上云」配置 Worker 地址和密钥。"); return false; }
+  try {
+    const r = await fetch(cfg.url + "/state?key=" + encodeURIComponent(cfg.key));
+    if (!r.ok) { if (manual) alert("恢复失败：" + r.status); return false; }
+    const t = await r.text();
+    if (!t || t === "（空的）") { if (manual) alert("云端还没有备份。"); return false; }
+    const cloud = JSON.parse(t);
+    // 逐卡合并：哪边盒子高（更熟）取哪边，不互相覆盖退步
+    let merged = 0;
+    for (const [id, cs] of Object.entries(cloud.stats || {})) {
+      const ls = stats[id];
+      if (!ls || (cs.box || 0) > (ls.box || 0)) { stats[id] = cs; merged++; }
+    }
+    const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
+    (cloud.days || []).forEach(d => days.add(d));
+    localStorage.setItem("jpGrammarDays", JSON.stringify([...days]));
+    saveStats();
+    if (manual) alert(`已从云恢复：合并了 ${merged} 张卡的进度。`);
+    return true;
+  } catch (e) { if (manual) alert("网络失败：" + e.message); return false; }
+}
+
+$("btn-prog").onclick = () => { showProgress(); updateBakInfo(); };
 // 振り仮名开关（默认开）
 if (localStorage.getItem("jpGrammarRuby") === "off") document.body.classList.add("no-rt");
 $("btn-ruby").onclick = () => {
@@ -445,6 +503,9 @@ $("ans").addEventListener("beforeinput", e => {
   }
 });
 
+$("btn-bak").onclick = () => backupState(true);
+$("btn-res").onclick = () => { if (confirm("从云恢复会和本地合并（每张卡取更熟的进度），继续？")) restoreState(true); };
+
 $("btn-submit").onclick = () => judge(false);
 $("btn-pass").onclick = () => judge(true);
 $("btn-next").onclick = next;
@@ -457,8 +518,11 @@ $("btn-save2").onclick = () => exportLog(false);
 $("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(false); render(); };
 $("btn-force").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(true); render(); };
 
-buildQueue(false);
-render();
+// 启动：本地一片空白且配过云 → 自动从云恢复（新设备/清缓存后的救命绳）
+(async () => {
+  if (!Object.keys(stats).length && getCloudCfg()) await restoreState(false);
+  buildQueue(false); render();
+})();
 </script>
 </body>
 </html>
