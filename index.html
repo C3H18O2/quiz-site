@@ -48,6 +48,7 @@
         <option value="10">每轮 10 张</option>
         <option value="all">全部</option>
       </select>
+      <button id="btn-cloud" title="上传错题日志到云端（Worker）">上云</button>
       <button id="btn-export" title="复制错题日志给 kk">错题日志</button>
       <button id="btn-save" title="直接写入 错题日志.txt">落盘</button>
     </span>
@@ -294,6 +295,33 @@ $("ans").addEventListener("beforeinput", e => {
     syncAns();
   }
 });
+
+// 上云：POST 错题日志到 Cloudflare Worker（地址和密钥首次输入后记住）
+async function cloudUpload() {
+  let cfg = JSON.parse(localStorage.getItem("jpGrammarCloud") || "null");
+  if (!cfg) {
+    const url = prompt("Worker 地址（形如 https://xxx.workers.dev，kk 部署后给你）：");
+    if (!url) return;
+    const key = prompt("密钥（kk 给你的那串）：");
+    if (!key) return;
+    cfg = { url: url.replace(/\/+$/, ""), key };
+    localStorage.setItem("jpGrammarCloud", JSON.stringify(cfg));
+  }
+  const btn = $("btn-cloud");
+  btn.disabled = true; btn.textContent = "上传中…";
+  try {
+    const r = await fetch(cfg.url + "/log", {
+      method: "POST",
+      headers: { "content-type": "text/plain; charset=utf-8", "x-key": cfg.key },
+      body: buildLogText(),
+    });
+    if (r.ok) alert("已上云。跟 kk 说一声「读云」就行。");
+    else if (r.status === 403) { localStorage.removeItem("jpGrammarCloud"); alert("密钥不对，已清除配置，下次点上云重新输入。"); }
+    else alert("上传失败：" + r.status);
+  } catch (e) { alert("网络失败：" + e.message); }
+  btn.disabled = false; btn.textContent = "上云";
+}
+$("btn-cloud").onclick = cloudUpload;
 
 $("btn-submit").onclick = () => judge(false);
 $("btn-pass").onclick = () => judge(true);
