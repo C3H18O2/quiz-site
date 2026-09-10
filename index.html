@@ -34,6 +34,23 @@
   #summary h2 { margin:0 0 16px; }
   #summary .btns { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
   .hidden { display:none !important; }
+  /* 进度面板 */
+  #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10; justify-content:center; align-items:flex-start; padding:24px 12px; overflow-y:auto; }
+  #prog { background:var(--panel); border-radius:12px; padding:24px; width:100%; max-width:560px; }
+  #prog h2 { margin:0 0 16px; font-size:18px; }
+  .nums { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .num { background:#15171b; border-radius:8px; padding:10px 14px; text-align:center; flex:1; min-width:80px; }
+  .num b { display:block; font-size:24px; }
+  .num span { color:var(--dim); font-size:12px; }
+  .num b.warn { color:var(--accent); }
+  .num b.good { color:var(--ok); }
+  .boxrow { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:12px; color:var(--dim); }
+  .boxrow .lbl { width:44px; text-align:right; }
+  .boxrow .bar { height:14px; background:var(--accent); border-radius:3px; min-width:2px; }
+  .boxrow .cnt { width:30px; }
+  #weak { margin-top:16px; font-size:14px; line-height:1.9; }
+  #weak li { color:var(--fg); }
+  .sec { color:var(--dim); font-size:13px; margin:16px 0 8px; border-top:1px solid #3a3f47; padding-top:12px; }
 </style>
 </head>
 <body>
@@ -48,6 +65,7 @@
         <option value="10">每轮 10 张</option>
         <option value="all">全部</option>
       </select>
+      <button id="btn-prog" title="学习进度">进度</button>
       <button id="btn-cloud" title="上传错题日志到云端（Worker）">上云</button>
       <button id="btn-export" title="复制错题日志给 kk">错题日志</button>
       <button id="btn-save" title="直接写入 错题日志.txt">落盘</button>
@@ -78,9 +96,23 @@
     <div id="sum-body" style="color:var(--dim)"></div>
     <div class="btns">
       <button class="primary" id="btn-restart">再来一轮</button>
+      <button class="primary hidden" id="btn-force">加练一轮（含未到期）</button>
       <button id="btn-export2">复制错题日志</button>
       <button id="btn-save2">落盘错题日志</button>
     </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="prog">
+    <h2>学习进度</h2>
+    <div class="nums" id="prog-nums"></div>
+    <div class="sec">记忆曲线分布（每格＝复习间隔）</div>
+    <div id="prog-boxes"></div>
+    <div class="sec">薄弱点 TOP5（按历史错题次数）</div>
+    <ol id="weak" style="margin:0;padding-left:22px;"></ol>
+    <div class="sec"></div>
+    <div style="text-align:center;"><button id="btn-closeprog">关闭</button></div>
   </div>
 </div>
 
@@ -143,15 +175,24 @@ const syncAns = () => { $("ans").value = kanaBuf.join("") + pending; };
 const resetInput = () => { kanaBuf = []; pending = ""; syncAns(); };
 /* ===== 转换器结束 ===== */
 
-const INTERVALS = [0, 864e5, 3*864e5, 7*864e5, 16*864e5, 35*864e5]; // box0..5
+/* ===== SRS：Leitner 盒记忆曲线（答对升盒，答错回 0 盒，到期才出现） ===== */
+const INTERVALS = [0, 864e5, 2*864e5, 4*864e5, 7*864e5, 15*864e5, 30*864e5, 60*864e5];
+const BOX_LABELS = ["新/错", "1天", "2天", "4天", "7天", "15天", "30天", "60天"];
+
 const kata2hira = s => s.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
 const norm = s => kata2hira((s||"").normalize("NFKC").trim().replace(/\s+/g,"")).toLowerCase();
 const $ = id => document.getElementById(id);
+const dayStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
 let stats = JSON.parse(localStorage.getItem("jpGrammarStats.v1") || "{}");
 let log   = JSON.parse(localStorage.getItem("jpGrammarLog.v1")   || "[]");
 const saveStats = () => localStorage.setItem("jpGrammarStats.v1", JSON.stringify(stats));
 const saveLog   = () => localStorage.setItem("jpGrammarLog.v1",   JSON.stringify(log));
+const markStudyDay = () => {
+  const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
+  days.add(dayStr(new Date()));
+  localStorage.setItem("jpGrammarDays", JSON.stringify([...days]));
+};
 
 let queue = [], idx = 0, answered = false, sessionRight = 0, sessionWrong = 0;
 
@@ -163,19 +204,20 @@ $("sel-size").value = sessionSize;
 $("sel-size").onchange = () => {
   sessionSize = $("sel-size").value;
   localStorage.setItem("jpGrammarSessionSize", sessionSize);
-  buildQueue(); render();
+  buildQueue(false); render();
 };
 
-function buildQueue() {
+function buildQueue(force) {
   const now = Date.now();
   queue = DECK.filter(c => { const st = stats[c.id]; return !st || st.due <= now; }).map(c => c.id);
-  if (!queue.length) queue = DECK.map(c => c.id); // 全部未到期 → 全量复习
+  if (!queue.length && force) queue = DECK.map(c => c.id); // 加练：全量
   shuffle(queue);
   if (sessionSize !== "all") queue = queue.slice(0, +sessionSize);
   idx = 0; sessionRight = 0; sessionWrong = 0;
 }
 
 function render() {
+  if (!queue.length) return showAllClear();
   if (idx >= queue.length) return showSummary();
   const c = cardById(queue[idx]);
   answered = false;
@@ -195,6 +237,7 @@ function render() {
 function judge(gaveUp) {
   if (answered) return;
   answered = true;
+  markStudyDay();
   const c = cardById(queue[idx]);
   if (pending === "n") { kanaBuf.push("ん"); pending = ""; }  // 句尾的 n 算 ん
   syncAns();
@@ -235,12 +278,30 @@ function next() { idx++; render(); $("bar").firstElementChild.style.width = (idx
 function showSummary() {
   $("card").classList.add("hidden");
   $("summary").style.display = "block";
+  $("btn-force").classList.add("hidden");
+  $("btn-restart").classList.remove("hidden");
   const total = sessionRight + sessionWrong;
   $("sum-title").textContent = `本轮 ${sessionRight} / ${total}`;
   $("sum-body").innerHTML = sessionWrong === 0
     ? "全对！错题日志是空的，去找 kk 报喜。"
-    : `错了 ${sessionWrong} 题，已记入错题日志。<br>点下方按钮复制或落盘，发给 kk 判案。`;
+    : `错了 ${sessionWrong} 题，已记入错题日志。<br>点上方「上云」或「复制错题日志」，发给 kk 判案。`;
   $("progress").textContent = "完成";
+  $("bar").firstElementChild.style.width = "100%";
+}
+
+function showAllClear() {
+  $("card").classList.add("hidden");
+  $("summary").style.display = "block";
+  $("btn-restart").classList.add("hidden");
+  $("btn-force").classList.remove("hidden");
+  const now = Date.now();
+  const future = DECK.map(c => stats[c.id]).filter(st => st && st.due > now).map(st => st.due);
+  const nextDue = future.length ? new Date(Math.min(...future)) : null;
+  $("sum-title").textContent = "今日份清空 ✓";
+  $("sum-body").innerHTML = "没有到期卡片了，记忆曲线让它们各自排队。" +
+    (nextDue ? `<br>最早一批到期：<b style="color:var(--fg)">${nextDue.getMonth()+1}月${nextDue.getDate()}日</b>` : "") +
+    "<br>闲不住就点下面加练。";
+  $("progress").textContent = "今日已清";
   $("bar").firstElementChild.style.width = "100%";
 }
 
@@ -282,19 +343,56 @@ async function exportLog(copyOnly) {
   }
 }
 
-// 罗马音直输：拦截拉丁字母，转假名；其他输入（粘贴等）放行，判定时兜底
-$("ans").addEventListener("beforeinput", e => {
-  if (e.inputType === "insertText" && /^[a-zA-Z'\-]+$/.test(e.data || "")) {
-    e.preventDefault();
-    for (const ch of e.data.toLowerCase()) feed(ch);
-    syncAns();
-  } else if (e.inputType === "deleteContentBackward") {
-    e.preventDefault();
-    if (pending) pending = pending.slice(0, -1);
-    else kanaBuf.pop();
-    syncAns();
+/* ===== 进度面板 ===== */
+function progData() {
+  const now = Date.now();
+  let neu = 0, learning = 0, mastered = 0, due = 0;
+  const boxCnt = new Array(INTERVALS.length).fill(0);
+  for (const c of DECK) {
+    const st = stats[c.id];
+    if (!st) { neu++; boxCnt[0]++; continue; }
+    boxCnt[Math.min(st.box || 0, INTERVALS.length - 1)]++;
+    if (st.due <= now) due++;
+    if ((st.box || 0) >= 4) mastered++; else learning++;
   }
-});
+  const weak = {};
+  for (const e of log) {
+    if (e.ok) continue;
+    const c = cardById(e.id);
+    const t = c ? c.tag.replace(/^语法::/, "") : e.id;
+    weak[t] = (weak[t] || 0) + 1;
+  }
+  const weakTop = Object.entries(weak).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
+  const d = new Date();
+  if (!days.has(dayStr(d))) d.setDate(d.getDate() - 1);  // 今天没学就从昨天往回数
+  let streak = 0;
+  while (days.has(dayStr(d))) { streak++; d.setDate(d.getDate() - 1); }
+  return { neu, learning, mastered, due, boxCnt, weakTop, streak, total: DECK.length };
+}
+
+function showProgress() {
+  const p = progData();
+  $("prog-nums").innerHTML =
+    `<div class="num"><b>${p.due}</b><span>今日到期</span></div>` +
+    `<div class="num"><b>${p.neu}</b><span>新卡</span></div>` +
+    `<div class="num"><b>${p.learning}</b><span>学习中</span></div>` +
+    `<div class="num"><b class="good">${p.mastered}</b><span>熟练(≥7天)</span></div>` +
+    `<div class="num"><b class="warn">${p.streak}</b><span>连续学习(天)</span></div>`;
+  const max = Math.max(1, ...p.boxCnt);
+  $("prog-boxes").innerHTML = p.boxCnt.map((n, i) =>
+    `<div class="boxrow"><span class="lbl">${BOX_LABELS[i]}</span>` +
+    `<span class="bar" style="width:${Math.round(n / max * 70)}%"></span>` +
+    `<span class="cnt">${n}</span></div>`).join("");
+  $("weak").innerHTML = p.weakTop.length
+    ? p.weakTop.map(([t, n]) => `<li>${t} <b>×${n}</b></li>`).join("")
+    : "<li>暂无错题记录，干净得很。</li>";
+  $("overlay").style.display = "flex";
+}
+
+$("btn-prog").onclick = showProgress;
+$("btn-closeprog").onclick = () => $("overlay").style.display = "none";
+$("overlay").addEventListener("click", e => { if (e.target === $("overlay")) $("overlay").style.display = "none"; });
 
 // 上云：POST 错题日志到 Cloudflare Worker（地址和密钥首次输入后记住）
 async function cloudUpload() {
@@ -323,6 +421,20 @@ async function cloudUpload() {
 }
 $("btn-cloud").onclick = cloudUpload;
 
+// 罗马音直输：拦截拉丁字母，转假名；其他输入（粘贴等）放行，判定时兜底
+$("ans").addEventListener("beforeinput", e => {
+  if (e.inputType === "insertText" && /^[a-zA-Z'\-]+$/.test(e.data || "")) {
+    e.preventDefault();
+    for (const ch of e.data.toLowerCase()) feed(ch);
+    syncAns();
+  } else if (e.inputType === "deleteContentBackward") {
+    e.preventDefault();
+    if (pending) pending = pending.slice(0, -1);
+    else kanaBuf.pop();
+    syncAns();
+  }
+});
+
 $("btn-submit").onclick = () => judge(false);
 $("btn-pass").onclick = () => judge(true);
 $("btn-next").onclick = next;
@@ -332,9 +444,10 @@ $("btn-export").onclick = () => exportLog(true);
 $("btn-export2").onclick = () => exportLog(true);
 $("btn-save").onclick = () => exportLog(false);
 $("btn-save2").onclick = () => exportLog(false);
-$("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(); render(); };
+$("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(false); render(); };
+$("btn-force").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(true); render(); };
 
-buildQueue();
+buildQueue(false);
 render();
 </script>
 </body>
