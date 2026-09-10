@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>语法刷题 · 语法drill</title>
+<style>
+  :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:"Yu Gothic","Meiryo","Hiragino Kaku Gothic ProN",sans-serif; display:flex; justify-content:center; }
+  #app { width:100%; max-width:720px; padding:16px; }
+  header { display:flex; justify-content:space-between; align-items:baseline; color:var(--dim); font-size:13px; margin-bottom:12px; flex-wrap:wrap; gap:6px; }
+  #bar { height:5px; background:#333; border-radius:3px; overflow:hidden; margin-bottom:20px; }
+  #bar i { display:block; height:100%; background:var(--accent); width:0; transition:width .2s; }
+  #card { background:var(--panel); border-radius:12px; padding:28px 24px; }
+  #tag { color:var(--dim); font-size:12px; margin-bottom:14px; }
+  #jp { font-size:26px; line-height:1.7; margin-bottom:14px; }
+  #jp b { color:var(--accent); font-weight:normal; }
+  #zh { color:var(--dim); font-size:16px; line-height:1.6; }
+  #inputrow { margin-top:24px; display:flex; gap:8px; }
+  #ans { flex:1; background:#15171b; border:2px solid #3a3f47; border-radius:8px; color:var(--fg);
+         font-size:22px; padding:10px 14px; outline:none; font-family:inherit; }
+  #ans:focus { border-color:var(--accent); }
+  button { background:#3a3f47; color:var(--fg); border:none; border-radius:8px; padding:10px 16px;
+           font-size:15px; cursor:pointer; font-family:inherit; }
+  button:hover { background:#4a5058; }
+  button.primary { background:var(--accent); color:#1b1e23; font-weight:bold; }
+  #feedback { margin-top:18px; font-size:16px; line-height:1.8; display:none; }
+  #feedback.ok { color:var(--ok); }
+  #feedback.ng { color:var(--accent); }
+  #feedback .rule { color:var(--dim); font-size:14px; border-top:1px solid #3a3f47; margin-top:10px; padding-top:10px; }
+  #sub { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+  #summary { display:none; text-align:center; padding:40px 0; }
+  #summary h2 { margin:0 0 16px; }
+  #summary .btns { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span id="title">语法drill</span>
+    <span id="progress"></span>
+    <span>
+      <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
+        <option value="5">每轮 5 张</option>
+        <option value="8" selected>每轮 8 张</option>
+        <option value="10">每轮 10 张</option>
+        <option value="all">全部</option>
+      </select>
+      <button id="btn-export" title="复制错题日志给 kk">错题日志</button>
+      <button id="btn-save" title="直接写入 错题日志.txt">落盘</button>
+    </span>
+  </header>
+  <div id="bar"><i></i></div>
+
+  <div id="card">
+    <div id="tag" style="visibility:hidden;">&nbsp;</div>
+    <div id="jp"></div>
+    <div id="zh"></div>
+    <div id="inputrow">
+      <input id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+             inputmode="latin" lang="en" placeholder="ローマ字で入力…">
+      <button class="primary" id="btn-submit">判定</button>
+    </div>
+    <div id="sub">
+      <button id="btn-pass">不会</button>
+    </div>
+    <div id="feedback"></div>
+    <div id="sub2" class="hidden" style="margin-top:14px;">
+      <button class="primary" id="btn-next">继续 →</button>
+    </div>
+  </div>
+
+  <div id="summary">
+    <h2 id="sum-title"></h2>
+    <div id="sum-body" style="color:var(--dim)"></div>
+    <div class="btns">
+      <button class="primary" id="btn-restart">再来一轮</button>
+      <button id="btn-export2">复制错题日志</button>
+      <button id="btn-save2">落盘错题日志</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== 卡组（由 语法卡组源.json 生成，改卡请改源文件后跑 .reasonix/gen_deck.py） ===== */
+const DECK = [{"id":"g001","tag":"语法::N4::ておく","jp":"明日の会議のために、資料を＿＿＿＿。（コピーする）","zh":"为了明天的会议，先把资料复印好。","ans":["コピーしておく","コピーしておきます"],"rule":"提前准备好→Vて＋おく（口语缩成 とく）"},{"id":"g002","tag":"语法::N4::てしまう","jp":"大事な書類を＿＿＿＿。（なくす・过去）","zh":"把重要的文件弄丢了（糟糕）。","ans":["なくしてしまった","なくしちゃった","なくしてしまいました"],"rule":"完了/遗憾→Vて＋しまう（口语 ちゃう）"},{"id":"g003","tag":"语法::N4::そうだ样态","jp":"このケーキはおいし＿＿＿＿。","zh":"这个蛋糕看起来很好吃。","ans":["そうだ","そうです","そう"],"rule":"样态そうだ＝看起来…：い形去い、ナ形去だ、动词去ます，直接接"},{"id":"g004","tag":"语法::N4::そうだ传闻","jp":"明日は雨が降る＿＿＿＿。","zh":"听说明天会下雨。","ans":["そうだ","そうです"],"rule":"传闻そうだ＝听说…：接普通形（降るそうだ）。样态是 降りそうだ，一对别混"},{"id":"g005","tag":"语法::N4::ようだ","jp":"彼は疲れている＿＿＿＿。","zh":"他好像很累。（有根据的推测）","ans":["ようだ","ようです"],"rule":"ようだ＝有根据的推测，接普通形（Nの/ナ形な＋ようだ）"},{"id":"g006","tag":"语法::N4::らしい","jp":"彼女は来ない＿＿＿＿。","zh":"她好像不来了。（听来的/客观迹象）","ans":["らしい","らしいです"],"rule":"らしい＝客观迹象/听闻的推测，直接接普通形"},{"id":"g007","tag":"语法::N4::受身","jp":"私は先生に＿＿＿＿。（ほめる・过去）","zh":"我被老师表扬了。","ans":["ほめられた","ほめられました","褒められた"],"rule":"被动：五段あ列＋れる（ほめる→ほめられる），た形尾巴缩约"},{"id":"g008","tag":"语法::N4::使役","jp":"母は私に野菜を＿＿＿＿。（食べる・过去）","zh":"妈妈让我吃了蔬菜。","ans":["食べさせた","食べさせました","たべさせた"],"rule":"使役：一段去る＋させる；五段あ列＋せる"},{"id":"g009","tag":"语法::N4::のに转折","jp":"約束した＿＿＿＿、彼は来なかった。","zh":"明明约好了，他却没来。","ans":["のに"],"rule":"のに＝明明…却（带不满），普通形直接接（N/ナ形用 なのに）"},{"id":"g010","tag":"语法::N4::ば","jp":"安＿＿＿＿、買います。","zh":"便宜的话就买。","ans":["ければ"],"rule":"ば条件：い形去い＋ければ；五段う列→え列＋ば；一段去る＋れば"},{"id":"g011","tag":"语法::N4::たら","jp":"家に＿＿＿＿、電話してください。（帰る）","zh":"到家之后请给我打电话。","ans":["帰ったら","かえったら"],"rule":"たら＝…之后/如果…：た形＋ら。帰る是五段刺头→帰った"},{"id":"g012","tag":"语法::N4::てくる","jp":"日本語が上手に＿＿＿＿。（なる・过去）","zh":"日语渐渐变好了。","ans":["なってきた","なってきました"],"rule":"Vて＋くる＝变化开始/持续到现在（渐渐…起来）"},{"id":"g013","tag":"语法::插队::得る","jp":"その言い方は恐喝にも＿＿＿＿から、やめた方がいい。（なる）【书面】","zh":"那种说法也可能构成恐吓，还是别说了。","ans":["なり得る","なりえる","なりうる"],"rule":"得る＝有可能（书面）：ます词干＋得る。なる→なり得る，し得る只属于する一家"},{"id":"g014","tag":"语法::插队::ざるを得ない","jp":"サプライズのプレゼントに、＿＿＿＿。（驚く・不得不・过去）","zh":"惊喜礼物让我不得不惊叹。","ans":["驚かざるを得なかった","驚かざるをえなかった","おどろかざるをえなかった"],"rule":"ざるを得ない＝不得不：あ列＋ざるを得ない（する→せ）。驚く是自己惊，驚かす是吓人"},{"id":"g015","tag":"语法::插队::つもりで","jp":"ご馳走する＿＿＿＿行ったのに、おごってもらうことになった。","zh":"抱着请客的打算去了，结果变成被请。","ans":["つもりで"],"rule":"つもりで＝怀着…打算做（中顿），普通形直接贴，不塞の；结句用つもりだ"},{"id":"g016","tag":"语法::插队::よりほかない","jp":"教養がなさすぎる。勉強する＿＿＿＿。","zh":"太没教养了，除了学习别无选择。","ans":["よりほかない","より他ない"],"rule":"Vる＋よりほかない＝只能…。より→ほか→ない 语序焊死，无も"},{"id":"g017","tag":"语法::插队::推量副词","jp":"＿＿＿＿、今週の会議は、空気が重かったよね。","zh":"For some reason，这周会议气氛很沉重。","ans":["何やら","なにやら"],"rule":"当事人语感（亲历/感觉，说不清为啥）→何やら；侦探（看线索推未目击之事）→どうやら"},{"id":"g018","tag":"语法::插队::推量副词","jp":"＿＿＿＿今年の紅葉は遅れているらしい。","zh":"Apparently，今年的红叶晚了。","ans":["どうやら"],"rule":"どうやら＝侦探：线索→未目击的结论，句尾带 らしい/ようだ/みたい 官印"},{"id":"g019","tag":"语法::插队::一応","jp":"ハサミが必要になるかは分かりませんが、＿＿＿＿持ってきてください。","zh":"Just in case，请把剪刀带来。","ans":["一応","いちおう"],"rule":"一応＝有备无患（just in case，信号：分からないが/かも）；せめて＝退而求其次（at least，带くらいは）"},{"id":"g020","tag":"语法::插队::せめて","jp":"忙しくても、＿＿＿＿電話ぐらいはしてください。","zh":"At least，再忙也请至少打个电话。","ans":["せめて"],"rule":"せめて＝退而求其次/保底（at least），几乎必带 くらいは/ぐらいは 或保底情绪"},{"id":"g021","tag":"语法::N4::ずに","jp":"昨日は忙しくて、夜10時まで何も＿＿＿＿働いた。（食べる）","zh":"昨天太忙了，什么都没吃一直工作到晚上十点。","ans":["食べずに","たべずに"],"rule":"ず（に）＝不…而…（书面＝ないで/なくて）：あ列＋ず（に），する→せず（に）"},{"id":"g022","tag":"语法::N4::たがる","jp":"わたしの友だちも見＿＿＿＿います。（想看・第三人称）","zh":"我的朋友也想看（那部电影）。","ans":["たがって"],"rule":"第三人称的愿望用 たがる（ます形＋たがる）；たい 只管自己"},{"id":"g023","tag":"语法::N4::がる","jp":"あそこで泣いて、お菓子を＿＿＿＿いる子だよ。（想要・第三人称）","zh":"（不是小武，）是那边那个哭着要点心的小孩。","ans":["欲しがって","ほしがって"],"rule":"がる＝第三人称的感情/感受外露：い形・ナ形词干＋がる（欲しい→欲しがる）"},{"id":"g024","tag":"语法::N4::みたいだ","jp":"誰か教室にいる＿＿＿＿。電気が付いている。","zh":"好像教室里有人。灯开着呢。","ans":["みたいだ","みたいです"],"rule":"みたいだ＝口语版 ようだ（主观判断）：接普通形，N/ナ形直接接不加 の/な"},{"id":"g025","tag":"语法::N4::使役被动","jp":"お腹が痛くて病院へ行ったら、1時間も＿＿＿＿。（待つ・被迫）","zh":"肚子疼去医院，居然让我等了一个小时。","ans":["待たされた","待たされました","またされた"],"rule":"被迫→使役被动：五段あ列＋される（待つ→待たされる），两步法"},{"id":"g026","tag":"语法::N4::禁止な","jp":"ここに車を＿＿＿＿。邪魔だ。（止める・禁止）","zh":"别在这里停车，挡住路了。","ans":["止めるな","とめるな"],"rule":"禁止：辞书形＋な（语气强，告示/上对下）"},{"id":"g027","tag":"语法::N4::ていく","jp":"学校を卒業しても、日本語の勉強を続けて＿＿＿＿つもりだ。（いく/くる）","zh":"即使毕业了，也打算继续学日语下去。","ans":["いく"],"rule":"ていく＝从现在持续下去/远去；てくる＝持续到现在。时间点往后→いく"},{"id":"g028","tag":"语法::N4::てみる","jp":"すみません、この帽子、被って＿＿＿＿もいいですか。","zh":"不好意思，这顶帽子我可以戴戴看吗？","ans":["みて"],"rule":"てみる＝试着…看"},{"id":"g029","tag":"语法::N4::んです","jp":"A「明日、一緒に出かけませんか。」B「明日は友だちがうちに来る予定＿＿＿＿。」","zh":"（解释原因）明天朋友要来我家。","ans":["なんです","なのです"],"rule":"解释说明→んです（口语）/のです（书面）；N・ナ形用 なんです"},{"id":"g030","tag":"语法::N4::てもいい","jp":"すみません、ここで写真を撮って＿＿＿＿ですか。","zh":"不好意思，可以在这里拍照吗？","ans":["もいい"],"rule":"许可：てもいい（请求许可 てもいいですか）"},{"id":"g031","tag":"语法::N4::てはいけない","jp":"授業中、電話をかけて＿＿＿＿。","zh":"上课时间不准打电话。","ans":["はいけません","はいけない"],"rule":"禁止（上对下/规则）：てはいけない"},{"id":"g032","tag":"语法::N4::なければならない","jp":"食事の前には必ず手を＿＿＿＿なりません。（洗う）","zh":"吃饭前必须洗手。","ans":["洗わなければ","あらわなければ"],"rule":"必须＝ない形去い＋ければならない/いけない（口语 なきゃ）。う结尾→わ"},{"id":"g033","tag":"语法::N4::なくてもいい","jp":"病気が治ったから、薬を＿＿＿＿もいいです。（飲む）","zh":"因为病已经好了，不吃药也不要紧。","ans":["飲まなくて","のまなくて"],"rule":"不必→なくてもいい（＝なくてもかまわない）"},{"id":"g034","tag":"语法::N4::すぎる","jp":"たばこの＿＿＿＿はよくないですよ。（吸う）","zh":"抽太多烟不好的。","ans":["吸いすぎ","すいすぎ"],"rule":"过于→ます形＋すぎる（Ⅱ类活用）；名词形 〜すぎ（飲みすぎ）"},{"id":"g035","tag":"语法::N4::だす","jp":"今まで寝ていた赤ちゃんが急に＿＿＿＿。（泣く・过去）","zh":"一直睡着的婴儿突然哭了起来。","ans":["泣きだした","泣き出した","なきだした"],"rule":"开始…→ます形＋だす"},{"id":"g036","tag":"语法::N4::つづける","jp":"1時間ぐらい＿＿＿＿ので、のどが渇いた。（話す・过去）","zh":"因为一直说了将近一个小时，嗓子干了。","ans":["話しつづけた","話し続けた","はなしつづけた"],"rule":"持续…→ます形＋つづける（前接持续性动词）"},{"id":"g037","tag":"语法::N4::やすい","jp":"このペンは＿＿＿＿ですね。（書く）","zh":"这支笔很好写。","ans":["書きやすい","かきやすい"],"rule":"容易→ます形＋やすい（い形容词活用）；反义 にくい"},{"id":"g038","tag":"语法::N4::にくい","jp":"彼の名前は長くて＿＿＿＿。（覚える）","zh":"他的名字很长，很难记。","ans":["覚えにくい","おぼえにくい"],"rule":"难以→ます形＋にくい（客观条件导致）"},{"id":"g039","tag":"语法::N4::うちに","jp":"若い＿＿＿＿、いろいろな国へ旅行したいです。","zh":"想趁着年轻去很多国家旅游。","ans":["うちに"],"rule":"趁着…→普通形＋うちに；ないうちに＝趁没…"},{"id":"g040","tag":"语法::N4::ところ","jp":"これから食事に＿＿＿＿なんですが、一緒にいかがですか。（行く）","zh":"我正打算去吃饭，你也一起去吗？","ans":["行くところ","いくところ"],"rule":"正要…→辞书形＋ところ（だ）；たところ＝刚…完"}];
+/* ===== 卡组结束 ===== */
+
+/* ===== 罗马音→假名转换器（Bunpro 式：英文键盘直输，绕开输入法联想） ===== */
+const R2H = {
+  a:"あ",i:"い",u:"う",e:"え",o:"お",
+  ka:"か",ki:"き",ku:"く",ke:"け",ko:"こ", ga:"が",gi:"ぎ",gu:"ぐ",ge:"げ",go:"ご",
+  sa:"さ",shi:"し",si:"し",su:"す",se:"せ",so:"そ", za:"ざ",ji:"じ",zi:"じ",zu:"ず",ze:"ぜ",zo:"ぞ",
+  ta:"た",chi:"ち",ti:"ち",tsu:"つ",tu:"つ",te:"て",to:"と", da:"だ",di:"ぢ",du:"づ",de:"で",do:"ど",
+  na:"な",ni:"に",nu:"ぬ",ne:"ね",no:"の",
+  ha:"は",hi:"ひ",fu:"ふ",hu:"ふ",he:"へ",ho:"ほ", ba:"ば",bi:"び",bu:"ぶ",be:"べ",bo:"ぼ",
+  pa:"ぱ",pi:"ぴ",pu:"ぷ",pe:"ぺ",po:"ぽ",
+  ma:"ま",mi:"み",mu:"む",me:"め",mo:"も",
+  ya:"や",yu:"ゆ",yo:"よ",
+  ra:"ら",ri:"り",ru:"る",re:"れ",ro:"ろ",
+  wa:"わ",wo:"を",
+  kya:"きゃ",kyu:"きゅ",kyo:"きょ", gya:"ぎゃ",gyu:"ぎゅ",gyo:"ぎょ",
+  sha:"しゃ",shu:"しゅ",sho:"しょ",she:"しぇ", sya:"しゃ",syu:"しゅ",syo:"しょ",
+  ja:"じゃ",ju:"じゅ",jo:"じょ",je:"じぇ", jya:"じゃ",jyu:"じゅ",jyo:"じょ", zya:"じゃ",zyu:"じゅ",zyo:"じょ",
+  cha:"ちゃ",chu:"ちゅ",cho:"ちょ",che:"ちぇ", tya:"ちゃ",tyu:"ちゅ",tyo:"ちょ",
+  nya:"にゃ",nyu:"にゅ",nyo:"にょ", hya:"ひゃ",hyu:"ひゅ",hyo:"ひょ",
+  bya:"びゃ",byu:"びゅ",byo:"びょ", pya:"ぴゃ",pyu:"ぴゅ",pyo:"ぴょ",
+  mya:"みゃ",myu:"みゅ",myo:"みょ", rya:"りゃ",ryu:"りゅ",ryo:"りょ",
+  fa:"ふぁ",fi:"ふぃ",fe:"ふぇ",fo:"ふぉ", wi:"うぃ",we:"うぇ"
+};
+const R2H_PREFIX = new Set();
+for (const k of Object.keys(R2H)) for (let i = 1; i <= k.length; i++) R2H_PREFIX.add(k.slice(0, i));
+
+let kanaBuf = [];   // 已确定的假名（逐字）
+let pending = "";   // 未确定的罗马音（如 "k"、"sh"）
+
+function feed(ch) {
+  if (ch === "-") {               // 长音
+    if (pending === "n") { kanaBuf.push("ん"); pending = ""; }
+    kanaBuf.push("ー");
+    return;
+  }
+  pending += ch;
+  for (;;) {
+    if (!pending) break;
+    if (R2H[pending]) { kanaBuf.push(...R2H[pending]); pending = ""; continue; }
+    if (pending === "n'") { kanaBuf.push("ん"); pending = ""; continue; }
+    const p0 = pending[0];
+    if (pending.length >= 2 && p0 === "n" && !"aiueoy".includes(pending[1])) {
+      kanaBuf.push("ん"); pending = pending.slice(1); continue;
+    }
+    if (pending.length >= 2 && p0 === pending[1] && !"aiueon'-".includes(p0)) {
+      kanaBuf.push("っ"); pending = pending.slice(1); continue;
+    }
+    if (R2H_PREFIX.has(pending)) break;   // 还可能是某个音节的前缀，等下一个字母
+    kanaBuf.push(p0); pending = pending.slice(1);  // 无法解析，原样放出
+  }
+}
+const syncAns = () => { $("ans").value = kanaBuf.join("") + pending; };
+const resetInput = () => { kanaBuf = []; pending = ""; syncAns(); };
+/* ===== 转换器结束 ===== */
+
+const INTERVALS = [0, 864e5, 3*864e5, 7*864e5, 16*864e5, 35*864e5]; // box0..5
+const kata2hira = s => s.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+const norm = s => kata2hira((s||"").normalize("NFKC").trim().replace(/\s+/g,"")).toLowerCase();
+const $ = id => document.getElementById(id);
+
+let stats = JSON.parse(localStorage.getItem("jpGrammarStats.v1") || "{}");
+let log   = JSON.parse(localStorage.getItem("jpGrammarLog.v1")   || "[]");
+const saveStats = () => localStorage.setItem("jpGrammarStats.v1", JSON.stringify(stats));
+const saveLog   = () => localStorage.setItem("jpGrammarLog.v1",   JSON.stringify(log));
+
+let queue = [], idx = 0, answered = false, sessionRight = 0, sessionWrong = 0;
+
+const shuffle = a => { for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const cardById = id => DECK.find(c => c.id === id);
+
+let sessionSize = localStorage.getItem("jpGrammarSessionSize") || "8";
+$("sel-size").value = sessionSize;
+$("sel-size").onchange = () => {
+  sessionSize = $("sel-size").value;
+  localStorage.setItem("jpGrammarSessionSize", sessionSize);
+  buildQueue(); render();
+};
+
+function buildQueue() {
+  const now = Date.now();
+  queue = DECK.filter(c => { const st = stats[c.id]; return !st || st.due <= now; }).map(c => c.id);
+  if (!queue.length) queue = DECK.map(c => c.id); // 全部未到期 → 全量复习
+  shuffle(queue);
+  if (sessionSize !== "all") queue = queue.slice(0, +sessionSize);
+  idx = 0; sessionRight = 0; sessionWrong = 0;
+}
+
+function render() {
+  if (idx >= queue.length) return showSummary();
+  const c = cardById(queue[idx]);
+  answered = false;
+  $("jp").innerHTML = c.jp.replace(/＿+/g, "<b>＿＿＿＿</b>");
+  $("zh").textContent = c.zh;
+  resetInput();
+  $("ans").disabled = false;
+  $("feedback").style.display = "none";
+  $("sub2").classList.add("hidden");
+  $("btn-submit").classList.remove("hidden");
+  $("sub").classList.remove("hidden");
+  $("progress").textContent = `${idx+1} / ${queue.length}`;
+  $("bar").firstElementChild.style.width = (idx / queue.length * 100) + "%";
+  $("ans").focus();
+}
+
+function judge(gaveUp) {
+  if (answered) return;
+  answered = true;
+  const c = cardById(queue[idx]);
+  if (pending === "n") { kanaBuf.push("ん"); pending = ""; }  // 句尾的 n 算 ん
+  syncAns();
+  const yours = norm($("ans").value);
+  const ok = !gaveUp && c.ans.some(a => norm(a) === yours);
+  const now = Date.now();
+
+  if (ok) {
+    sessionRight++;
+    const st = stats[c.id] || { box: 0 };
+    st.box = Math.min((st.box || 0) + 1, INTERVALS.length - 1);
+    st.due = now + INTERVALS[st.box];
+    stats[c.id] = st;
+  } else {
+    sessionWrong++;
+    stats[c.id] = { box: 0, due: now };
+    log.push({ t: new Date().toISOString(), id: c.id, your: gaveUp ? "(不会)" : $("ans").value, ok: false });
+    saveLog();
+    // 错题当场回炉：3 张后再见
+    queue.splice(Math.min(idx + 3, queue.length), 0, c.id);
+  }
+  saveStats();
+
+  const fb = $("feedback");
+  fb.style.display = "block";
+  fb.className = ok ? "ok" : "ng";
+  fb.innerHTML = (ok ? "✓ 正解" : `✗ 正确答案：<b>${c.ans[0]}</b>${gaveUp ? "" : `（你写的：${$("ans").value || "（空）"}）`}`)
+               + `<div class="rule">【${c.tag}】${c.rule}</div>`;
+  $("ans").disabled = true;
+  $("btn-submit").classList.add("hidden");
+  $("sub").classList.add("hidden");
+  $("sub2").classList.remove("hidden");
+  $("btn-next").focus();
+}
+
+function next() { idx++; render(); $("bar").firstElementChild.style.width = (idx / queue.length * 100) + "%"; }
+
+function showSummary() {
+  $("card").classList.add("hidden");
+  $("summary").style.display = "block";
+  const total = sessionRight + sessionWrong;
+  $("sum-title").textContent = `本轮 ${sessionRight} / ${total}`;
+  $("sum-body").innerHTML = sessionWrong === 0
+    ? "全对！错题日志是空的，去找 kk 报喜。"
+    : `错了 ${sessionWrong} 题，已记入错题日志。<br>点下方按钮复制或落盘，发给 kk 判案。`;
+  $("progress").textContent = "完成";
+  $("bar").firstElementChild.style.width = "100%";
+}
+
+function buildLogText() {
+  const lines = ["# 错题日志（语法drill）", `# 导出时间：${new Date().toLocaleString()}`, ""];
+  for (const e of log.filter(e => !e.ok)) {
+    const c = cardById(e.id);
+    lines.push(`[${e.t}] ${e.id} ${c ? c.tag : ""}`);
+    lines.push(`  题目：${c ? c.jp : "?"}`);
+    lines.push(`  你的答案：${e.your}`);
+    lines.push(`  正确答案：${c ? c.ans[0] : "?"}${c && c.ans.length > 1 ? "（也可：" + c.ans.slice(1).join(" / ") + "）" : ""}`);
+    lines.push(`  规则：${c ? c.rule : "?"}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+async function exportLog(copyOnly) {
+  const text = buildLogText();
+  if (!copyOnly && window.showSaveFilePicker) {
+    try {
+      const h = await showSaveFilePicker({
+        suggestedName: "错题日志.txt",
+        types: [{ description: "文本", accept: { "text/plain": [".txt"] } }]
+      });
+      const w = await h.createWritable();
+      await w.write(text);
+      await w.close();
+      return alert("已写入文件。把它放在 D:\\学习 下，kk 就能直接读。");
+    } catch (e) { if (e.name === "AbortError") return; /* 取消则落到复制 */ }
+  }
+  try { await navigator.clipboard.writeText(text); alert("错题日志已复制，直接粘给 kk 即可。"); }
+  catch {
+    const blob = new Blob([text], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "错题日志.txt";
+    a.click();
+  }
+}
+
+// 罗马音直输：拦截拉丁字母，转假名；其他输入（粘贴等）放行，判定时兜底
+$("ans").addEventListener("beforeinput", e => {
+  if (e.inputType === "insertText" && /^[a-zA-Z'\-]+$/.test(e.data || "")) {
+    e.preventDefault();
+    for (const ch of e.data.toLowerCase()) feed(ch);
+    syncAns();
+  } else if (e.inputType === "deleteContentBackward") {
+    e.preventDefault();
+    if (pending) pending = pending.slice(0, -1);
+    else kanaBuf.pop();
+    syncAns();
+  }
+});
+
+$("btn-submit").onclick = () => judge(false);
+$("btn-pass").onclick = () => judge(true);
+$("btn-next").onclick = next;
+$("ans").addEventListener("keydown", e => { if (e.key === "Enter") judge(false); });
+$("btn-next").addEventListener("keydown", e => { if (e.key === "Enter") next(); });
+$("btn-export").onclick = () => exportLog(true);
+$("btn-export2").onclick = () => exportLog(true);
+$("btn-save").onclick = () => exportLog(false);
+$("btn-save2").onclick = () => exportLog(false);
+$("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(); render(); };
+
+buildQueue();
+render();
+</script>
+</body>
+</html>
