@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KKdrill · 小夏专供 v1.6</title>
+<title>KKdrill · 小夏专供 v1.7</title>
 <style>
   :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
   * { box-sizing:border-box; }
@@ -71,7 +71,7 @@
 <body>
 <div id="app">
   <header>
-    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.6</small></span>
+    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.7</small></span>
     <span id="progress"></span>
     <span id="hdr-btns">
       <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
@@ -289,11 +289,18 @@ function editDist(a, b) {
 
 // 形态提示：分析错答属于哪种错法（原形交卷 > 词尾错 > 手误；没把握就闭嘴）
 // 只差一个音的情况算手误，不算词尾错（词尾错要求差异 ≥ 2 处）
-function analyzeAnswer(yours, correct, base) {
-  if (!yours || yours === correct) return "";
+// correct 取所有可接受答案里编辑距离最近的那个（ans[0] 常带汉字，直接比会比不出前缀）
+function analyzeAnswer(yours, corrects, base) {
+  if (!yours) return "";
   if (base && yours === base)
     return "形态提示：原形直接交卷了——这题要变形，看规则";
-  const d = editDist(yours, correct);
+  let correct = null, d = Infinity;
+  for (const cand of corrects) {
+    if (yours === cand) return "";
+    const dc = editDist(yours, cand);
+    if (dc < d) { d = dc; correct = cand; }
+  }
+  if (!correct) return "";
   let pre = 0;
   while (pre < yours.length && pre < correct.length && yours[pre] === correct[pre]) pre++;
   if (pre < correct.length && pre >= correct.length * 0.6 && d > 1)
@@ -314,7 +321,7 @@ function judge(gaveUp) {
   syncAns();
   const yours = norm($("ans").value);
   const ok = !gaveUp && c.ans.some(a => norm(a) === yours);
-  const hint = ok || gaveUp ? "" : analyzeAnswer(yours, norm(c.ans[0]), c.base ? norm(c.base) : "");
+  const hint = ok || gaveUp ? "" : analyzeAnswer(yours, c.ans.map(a => norm(a)), c.base ? norm(c.base) : "");
   const now = Date.now();
 
   if (ok) {
