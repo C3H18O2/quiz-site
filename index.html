@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KKdrill · 小夏专供 v1.4</title>
+<title>KKdrill · 小夏专供 v1.5</title>
 <style>
   :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
   * { box-sizing:border-box; }
@@ -54,14 +54,25 @@
   #weak { margin-top:16px; font-size:14px; line-height:1.9; }
   #weak li { color:var(--fg); }
   .sec { color:var(--dim); font-size:13px; margin:16px 0 8px; border-top:1px solid #3a3f47; padding-top:12px; }
+  /* 头部按钮组：手机端紧凑换行 */
+  #hdr-btns { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  #hdr-btns button, #hdr-btns select { padding:7px 10px !important; font-size:13px; }
+  /* 热度图 */
+  .hm { display:flex; gap:2px; overflow-x:auto; padding-bottom:4px; }
+  .hm .wk { display:flex; flex-direction:column; gap:2px; }
+  .hm i { width:11px; height:11px; border-radius:2px; background:#2a2e35; }
+  .hm i.lv1 { background:rgba(229,115,115,.3); }
+  .hm i.lv2 { background:rgba(229,115,115,.5); }
+  .hm i.lv3 { background:rgba(229,115,115,.75); }
+  .hm i.lv4 { background:var(--accent); }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.4</small></span>
+    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.5</small></span>
     <span id="progress"></span>
-    <span>
+    <span id="hdr-btns">
       <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
         <option value="5">每轮 5 张</option>
         <option value="8" selected>每轮 8 张</option>
@@ -69,9 +80,8 @@
         <option value="all">全部</option>
       </select>
       <button id="btn-ruby" title="振り仮名 on/off">あ</button>
-      <button id="btn-prog" title="学习进度">进度</button>
-      <button id="btn-cloud" title="上传错题日志到云端（Worker）">上云</button>
-      <button id="btn-export" title="复制错题日志给 kk（上云之外的应急通道）">错题日志</button>
+      <button id="btn-prog" title="学习统计">📊 统计</button>
+      <button id="btn-cloud" title="上云：错题日志发给 kk 判案">☁️ 上云</button>
     </span>
   </header>
   <div id="bar"><i></i></div>
@@ -107,12 +117,17 @@
 
 <div id="overlay">
   <div id="prog">
-    <h2>学习进度</h2>
+    <h2>学习统计</h2>
     <div class="nums" id="prog-nums"></div>
     <div class="sec">记忆曲线分布（每格＝复习间隔）</div>
     <div id="prog-boxes"></div>
-    <div class="sec">薄弱点 TOP5（按历史错题次数）</div>
+    <div class="sec">每日学习量（近 14 天，单位：张）</div>
+    <div id="prog-daily"></div>
+    <div class="sec">热度图（近 17 周，颜色越深刷得越多）</div>
+    <div id="prog-heat" class="hm"></div>
+    <div class="sec">薄弱点 TOP5（按历史错题次数，双端云同步）</div>
     <ol id="weak" style="margin:0;padding-left:22px;"></ol>
+    <div style="text-align:center;margin-top:10px;"><button id="btn-export3">复制错题日志</button></div>
     <div class="sec">进度云同步（每台设备第一次先点一次「上云」配好地址密钥）</div>
     <div style="display:flex;gap:10px;justify-content:center;">
       <button id="btn-bak">备份进度到云</button>
@@ -195,6 +210,22 @@ let stats = JSON.parse(localStorage.getItem("jpGrammarStats.v1") || "{}");
 let log   = JSON.parse(localStorage.getItem("jpGrammarLog.v1")   || "[]");
 const saveStats = () => localStorage.setItem("jpGrammarStats.v1", JSON.stringify(stats));
 const saveLog   = () => localStorage.setItem("jpGrammarLog.v1",   JSON.stringify(log));
+
+// 错题次数 & 每日学习量（随进度一起上云，max 合并）
+let wrong = JSON.parse(localStorage.getItem("jpGrammarWrong.v1") || "null");
+if (!wrong) {  // 老数据迁移：从本地错题日志数一遍
+  wrong = {};
+  for (const e of log) if (!e.ok) wrong[e.id] = (wrong[e.id] || 0) + 1;
+  localStorage.setItem("jpGrammarWrong.v1", JSON.stringify(wrong));
+}
+let daily = JSON.parse(localStorage.getItem("jpGrammarDaily.v1") || "null");
+if (!daily) {  // 老数据只有活跃日，数量记 1，从今天起精确记
+  daily = {};
+  for (const d of JSON.parse(localStorage.getItem("jpGrammarDays") || "[]")) daily[d] = 1;
+  localStorage.setItem("jpGrammarDaily.v1", JSON.stringify(daily));
+}
+const saveWrong = () => localStorage.setItem("jpGrammarWrong.v1", JSON.stringify(wrong));
+const saveDaily = () => localStorage.setItem("jpGrammarDaily.v1", JSON.stringify(daily));
 const markStudyDay = () => {
   const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
   days.add(dayStr(new Date()));
@@ -248,6 +279,8 @@ function judge(gaveUp) {
   if (answered) return;
   answered = true;
   markStudyDay();
+  const _ds = dayStr(new Date());
+  daily[_ds] = (daily[_ds] || 0) + 1; saveDaily();
   const c = cardById(queue[idx]);
   if (pending === "n") { kanaBuf.push("ん"); pending = ""; }  // 句尾的 n 算 ん
   syncAns();
@@ -266,6 +299,7 @@ function judge(gaveUp) {
     stats[c.id] = { box: 0, due: now };
     log.push({ t: new Date().toISOString(), id: c.id, your: gaveUp ? "(不会)" : $("ans").value, ok: false });
     saveLog();
+    wrong[c.id] = (wrong[c.id] || 0) + 1; saveWrong();
     // 错题当场回炉：3 张后再见
     queue.splice(Math.min(idx + 3, queue.length), 0, c.id);
   }
@@ -366,14 +400,9 @@ function progData() {
     if (st.due <= now) due++;
     if ((st.box || 0) >= 4) mastered++; else learning++;
   }
-  const weak = {};
-  for (const e of log) {
-    if (e.ok) continue;
-    const c = cardById(e.id);
-    const t = c ? c.tag.replace(/^语法::/, "") : e.id;
-    weak[t] = (weak[t] || 0) + 1;
-  }
-  const weakTop = Object.entries(weak).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const weakTop = Object.entries(wrong)
+    .map(([id, n]) => { const c = cardById(id); return [c ? c.tag.replace(/^语法::/, "") : id, n]; })
+    .sort((a, b) => b[1] - a[1]).slice(0, 5);
   const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
   const d = new Date();
   if (!days.has(dayStr(d))) d.setDate(d.getDate() - 1);  // 今天没学就从昨天往回数
@@ -395,10 +424,39 @@ function showProgress() {
     `<div class="boxrow"><span class="lbl">${BOX_LABELS[i]}</span>` +
     `<span class="bar" style="width:${Math.round(n / max * 70)}%"></span>` +
     `<span class="cnt">${n}</span></div>`).join("");
+  // 每日学习量（近 14 天柱状）
+  const dlist = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); dlist.push(d); }
+  const dmax = Math.max(1, ...dlist.map(d => daily[dayStr(d)] || 0));
+  $("prog-daily").innerHTML = dlist.map(d => {
+    const n = daily[dayStr(d)] || 0;
+    return `<div class="boxrow"><span class="lbl">${d.getMonth()+1}/${d.getDate()}</span>` +
+      `<span class="bar" style="width:${Math.round(n / dmax * 70)}%"></span><span class="cnt">${n}</span></div>`;
+  }).join("");
+  renderHeat();
   $("weak").innerHTML = p.weakTop.length
     ? p.weakTop.map(([t, n]) => `<li>${t} <b>×${n}</b></li>`).join("")
     : "<li>暂无错题记录，干净得很。</li>";
   $("overlay").style.display = "flex";
+}
+
+// 热度图（GitHub 风格，近 17 周，列＝周，行＝周日~周六）
+function renderHeat() {
+  const N = 119, today = new Date();
+  const cells = [];
+  for (let i = N - 1; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const k = dayStr(d), n = daily[k] || 0;
+    cells.push({ k, n, wd: d.getDay(), lv: n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4 });
+  }
+  let html = "", col = [];
+  for (let b = 0; b < cells[0].wd; b++) col.push('<i class="lv0" style="visibility:hidden"></i>');
+  for (const c of cells) {
+    col.push(`<i class="lv${c.lv}" title="${c.k}：${c.n} 张"></i>`);
+    if (col.length === 7) { html += `<div class="wk">${col.join("")}</div>`; col = []; }
+  }
+  if (col.length) html += `<div class="wk">${col.join("")}</div>`;
+  $("prog-heat").innerHTML = html;
 }
 
 /* ===== 进度云备份/恢复（同一 Worker，/state 端点） ===== */
@@ -411,7 +469,7 @@ function getCloudCfg() {
 }
 function statePack() {
   return JSON.stringify({
-    v: 1, savedAt: Date.now(), stats,
+    v: 2, savedAt: Date.now(), stats, wrong, daily,
     days: JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"),
   });
 }
@@ -429,6 +487,9 @@ function mergeCloudIntoLocal(cloud) {
   const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
   (cloud.days || []).forEach(d => days.add(d));
   localStorage.setItem("jpGrammarDays", JSON.stringify([...days]));
+  for (const [id, n] of Object.entries(cloud.wrong || {})) if ((n || 0) > (wrong[id] || 0)) wrong[id] = n;
+  for (const [d, n] of Object.entries(cloud.daily || {})) if ((n || 0) > (daily[d] || 0)) daily[d] = n;
+  saveWrong(); saveDaily();
   saveStats();
   return merged;
 }
@@ -512,7 +573,7 @@ async function cloudUpload() {
     else if (r.status === 403) { localStorage.removeItem("jpGrammarCloud"); alert("密钥不对，已清除配置，下次点上云重新输入。"); }
     else alert("上传失败：" + r.status);
   } catch (e) { alert("网络失败：" + e.message); }
-  btn.disabled = false; btn.textContent = "上云";
+  btn.disabled = false; btn.textContent = "☁️ 上云";
 }
 $("btn-cloud").onclick = cloudUpload;
 
@@ -538,7 +599,7 @@ $("btn-pass").onclick = () => judge(true);
 $("btn-next").onclick = next;
 $("ans").addEventListener("keydown", e => { if (e.key === "Enter") judge(false); });
 $("btn-next").addEventListener("keydown", e => { if (e.key === "Enter") next(); });
-$("btn-export").onclick = () => exportLog(true);
+$("btn-export3").onclick = () => exportLog(true);
 $("btn-export2").onclick = () => exportLog(true);
 $("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(false); render(); };
 $("btn-force").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(true); render(); };
