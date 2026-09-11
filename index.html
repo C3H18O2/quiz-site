@@ -71,8 +71,7 @@
       <button id="btn-ruby" title="振り仮名 on/off">あ</button>
       <button id="btn-prog" title="学习进度">进度</button>
       <button id="btn-cloud" title="上传错题日志到云端（Worker）">上云</button>
-      <button id="btn-export" title="复制错题日志给 kk">错题日志</button>
-      <button id="btn-save" title="直接写入 错题日志.txt">落盘</button>
+      <button id="btn-export" title="复制错题日志给 kk（上云之外的应急通道）">错题日志</button>
     </span>
   </header>
   <div id="bar"><i></i></div>
@@ -102,7 +101,6 @@
       <button class="primary" id="btn-restart">再来一轮</button>
       <button class="primary hidden" id="btn-force">加练一轮（含未到期）</button>
       <button id="btn-export2">复制错题日志</button>
-      <button id="btn-save2">落盘错题日志</button>
     </div>
   </div>
 </div>
@@ -218,9 +216,12 @@ $("sel-size").onchange = () => {
 
 function buildQueue(force) {
   const now = Date.now();
-  queue = DECK.filter(c => { const st = stats[c.id]; return !st || st.due <= now; }).map(c => c.id);
-  if (!queue.length && force) queue = DECK.map(c => c.id); // 加练：全量
-  shuffle(queue);
+  // 到期复习优先，新卡填空位（各自洗乱，互不均匀混合，避免新卡挤掉复习）
+  const due = DECK.filter(c => { const st = stats[c.id]; return st && st.due <= now; }).map(c => c.id);
+  const fresh = DECK.filter(c => !stats[c.id]).map(c => c.id);
+  shuffle(due); shuffle(fresh);
+  queue = due.concat(fresh);
+  if (!queue.length && force) { queue = DECK.map(c => c.id); shuffle(queue); } // 加练：全量
   if (sessionSize !== "all") queue = queue.slice(0, +sessionSize);
   idx = 0; sessionRight = 0; sessionWrong = 0;
 }
@@ -513,8 +514,6 @@ $("ans").addEventListener("keydown", e => { if (e.key === "Enter") judge(false);
 $("btn-next").addEventListener("keydown", e => { if (e.key === "Enter") next(); });
 $("btn-export").onclick = () => exportLog(true);
 $("btn-export2").onclick = () => exportLog(true);
-$("btn-save").onclick = () => exportLog(false);
-$("btn-save2").onclick = () => exportLog(false);
 $("btn-restart").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(false); render(); };
 $("btn-force").onclick = () => { $("summary").style.display = "none"; $("card").classList.remove("hidden"); buildQueue(true); render(); };
 
