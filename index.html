@@ -413,10 +413,29 @@ function updateBakInfo() {
   const t = localStorage.getItem("jpGrammarLastBackup");
   $("bak-info").textContent = t ? "上次备份：" + new Date(+t).toLocaleString() : "还没备份过";
 }
+// 逐卡合并：哪边盒子高（更熟）取哪边，不互相覆盖退步
+function mergeCloudIntoLocal(cloud) {
+  let merged = 0;
+  for (const [id, cs] of Object.entries(cloud.stats || {})) {
+    const ls = stats[id];
+    if (!ls || (cs.box || 0) > (ls.box || 0)) { stats[id] = cs; merged++; }
+  }
+  const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
+  (cloud.days || []).forEach(d => days.add(d));
+  localStorage.setItem("jpGrammarDays", JSON.stringify([...days]));
+  saveStats();
+  return merged;
+}
 async function backupState(manual) {
   const cfg = getCloudCfg();
   if (!cfg) { if (manual) alert("先点一次「上云」配置 Worker 地址和密钥。"); return; }
   try {
+    // 先拉云端合并进本地，再上传——防止空白设备/落后设备覆盖云端的进度
+    const r0 = await fetch(cfg.url + "/state?key=" + encodeURIComponent(cfg.key));
+    if (r0.ok) {
+      const t0 = await r0.text();
+      if (t0 && t0 !== "（空的）") mergeCloudIntoLocal(JSON.parse(t0));
+    }
     const r = await fetch(cfg.url + "/state", {
       method: "POST",
       headers: { "content-type": "text/plain; charset=utf-8", "x-key": cfg.key },
@@ -424,7 +443,7 @@ async function backupState(manual) {
     });
     if (r.ok) {
       localStorage.setItem("jpGrammarLastBackup", String(Date.now()));
-      if (manual) alert("进度已备份到云。");
+      if (manual) alert("进度已备份到云（先合并后上传，不会丢进度）。");
       updateBakInfo();
     } else if (manual) alert("备份失败：" + r.status);
   } catch (e) { if (manual) alert("网络失败：" + e.message); }
@@ -437,17 +456,7 @@ async function restoreState(manual) {
     if (!r.ok) { if (manual) alert("恢复失败：" + r.status); return false; }
     const t = await r.text();
     if (!t || t === "（空的）") { if (manual) alert("云端还没有备份。"); return false; }
-    const cloud = JSON.parse(t);
-    // 逐卡合并：哪边盒子高（更熟）取哪边，不互相覆盖退步
-    let merged = 0;
-    for (const [id, cs] of Object.entries(cloud.stats || {})) {
-      const ls = stats[id];
-      if (!ls || (cs.box || 0) > (ls.box || 0)) { stats[id] = cs; merged++; }
-    }
-    const days = new Set(JSON.parse(localStorage.getItem("jpGrammarDays") || "[]"));
-    (cloud.days || []).forEach(d => days.add(d));
-    localStorage.setItem("jpGrammarDays", JSON.stringify([...days]));
-    saveStats();
+    const merged = mergeCloudIntoLocal(JSON.parse(t));
     if (manual) alert(`已从云恢复：合并了 ${merged} 张卡的进度。`);
     return true;
   } catch (e) { if (manual) alert("网络失败：" + e.message); return false; }
