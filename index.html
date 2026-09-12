@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KKdrill · 小夏专供 v1.8</title>
+<title>KKdrill · 小夏专供 v1.9</title>
 <style>
   :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
   * { box-sizing:border-box; }
@@ -55,6 +55,9 @@
   #weak { margin-top:16px; font-size:14px; line-height:1.9; }
   #weak li { color:var(--fg); }
   .sec { color:var(--dim); font-size:13px; margin:16px 0 8px; border-top:1px solid #3a3f47; padding-top:12px; }
+  /* 到期徽章：药丸形，和卡片进度分开 */
+  #due-badge { background:#15171b; border-radius:10px; padding:2px 9px; font-size:12px; font-weight:bold; }
+  #progress { margin-left:10px; }
   /* 头部按钮组：手机端紧凑换行 */
   #hdr-btns { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
   #hdr-btns button, #hdr-btns select { padding:7px 10px !important; font-size:13px; }
@@ -71,8 +74,8 @@
 <body>
 <div id="app">
   <header>
-    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.8</small></span>
-    <span><span id="due-badge" title="今日到期（SRS 待复习量）"></span> <span id="progress"></span></span>
+    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.9</small></span>
+    <span><span id="due-badge" title="今日到期（SRS 待复习量）"></span><span id="progress"></span></span>
     <span id="hdr-btns">
       <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
         <option value="5">每轮 5 张</option>
@@ -242,7 +245,9 @@ const cardById = id => DECK.find(c => c.id === id);
 function updateDueBadge() {
   const now = Date.now();
   const due = DECK.filter(c => { const st = stats[c.id]; return st && st.due <= now; }).length;
-  $("due-badge").textContent = due ? `🔴到期 ${due}` : "✅今日已清";
+  const b = $("due-badge");
+  b.textContent = due ? `到期 ${due}` : "今日已清";
+  b.style.color = due ? "var(--accent)" : "var(--ok)";
 }
 
 let sessionSize = localStorage.getItem("jpGrammarSessionSize") || "8";
