@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-<title>KKdrill · 小夏专供 v1.9.2</title>
+<title>KKdrill · 小夏专供 v1.9.3</title>
 <style>
   :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
   * { box-sizing:border-box; }
@@ -74,7 +74,7 @@
 <body>
 <div id="app">
   <header>
-    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.9.2</small></span>
+    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v1.9.3</small></span>
     <span><span id="due-badge" title="今日到期（SRS 待复习量）"></span><span id="progress"></span></span>
     <span id="hdr-btns">
       <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
@@ -172,33 +172,56 @@ const R2H = {
 const R2H_PREFIX = new Set();
 for (const k of Object.keys(R2H)) for (let i = 1; i <= k.length; i++) R2H_PREFIX.add(k.slice(0, i));
 
-let kanaBuf = [];   // 已确定的假名（逐字）
-let pending = "";   // 未确定的罗马音（如 "k"、"sh"）
+let pre = "";      // 光标前已确定的文本
+let pending = "";  // 光标处未确定的罗马音（如 "k"、"sh"、"n"）
+let post = "";     // 光标后的文本（支持点回中间修改）
+
+// 显示用：落单的 n / nn 直接画成 ん（Bunpro/WaniKani 手感），内部仍等下一个字母定夺
+const dispPending = () => (pending === "n" || pending === "nn") ? "ん" : pending;
 
 function feed(ch) {
   if (ch === "-") {               // 长音
-    if (pending === "n") { kanaBuf.push("ん"); pending = ""; }
-    kanaBuf.push("ー");
+    if (pending === "n" || pending === "nn") { pre += "ん"; pending = ""; }
+    pre += "ー";
     return;
   }
   pending += ch;
   for (;;) {
     if (!pending) break;
-    if (R2H[pending]) { kanaBuf.push(...R2H[pending]); pending = ""; continue; }
-    if (pending === "n'") { kanaBuf.push("ん"); pending = ""; continue; }
+    if (R2H[pending]) { pre += R2H[pending]; pending = ""; continue; }
+    if (pending === "n'") { pre += "ん"; pending = ""; continue; }
+    if (pending === "nn") break;  // 双 n 按住等下文：nn+元音→ん+な行（nna→んな）；句尾/辅音前→ん
     const p0 = pending[0];
     if (pending.length >= 2 && p0 === "n" && !"aiueoy".includes(pending[1])) {
-      kanaBuf.push("ん"); pending = pending.slice(1); continue;
+      pre += "ん"; pending = pending.slice(1); continue;
     }
     if (pending.length >= 2 && p0 === pending[1] && !"aiueon'-".includes(p0)) {
-      kanaBuf.push("っ"); pending = pending.slice(1); continue;
+      pre += "っ"; pending = pending.slice(1); continue;
     }
     if (R2H_PREFIX.has(pending)) break;   // 还可能是某个音节的前缀，等下一个字母
-    kanaBuf.push(p0); pending = pending.slice(1);  // 无法解析，原样放出
+    pre += p0; pending = pending.slice(1);  // 无法解析，原样放出
   }
 }
-const syncAns = () => { const a = $("ans"); a.value = kanaBuf.join("") + pending; try { a.setSelectionRange(a.value.length, a.value.length); } catch {} a.scrollLeft = a.scrollWidth; };
-const resetInput = () => { kanaBuf = []; pending = ""; syncAns(); };
+
+const caretPos = () => pre.length + dispPending().length;
+const syncAns = () => {
+  const a = $("ans");
+  a.value = pre + dispPending() + post;
+  try { a.setSelectionRange(caretPos(), caretPos()); } catch {}
+  if (caretPos() === a.value.length) a.scrollLeft = a.scrollWidth;  // 光标在末尾才钉到最新位置
+};
+// 光标被点走/圈选/外部改动（粘贴等）时，把 DOM 现状接管回 pre/pending/post 模型
+const adoptDom = () => {
+  const a = $("ans");
+  if (a.value !== pre + dispPending() + post) {  // 外部改动（粘贴/输入法）：整个接管
+    pre = a.value.slice(0, a.selectionStart); post = a.value.slice(a.selectionEnd); pending = ""; return;
+  }
+  const p = a.selectionStart, e = a.selectionEnd;
+  if (p === caretPos() && e === p) return;  // 光标没动
+  const all = pre + pending + post; pending = "";
+  pre = all.slice(0, p); post = all.slice(e);  // 有选区时顺手删掉选中部分
+};
+const resetInput = () => { pre = ""; pending = ""; post = ""; syncAns(); };
 /* ===== 转换器结束 ===== */
 
 /* ===== SRS：Leitner 盒记忆曲线（答对升盒，答错回 0 盒，到期才出现） ===== */
@@ -330,7 +353,7 @@ function judge(gaveUp) {
   const _ds = dayStr(new Date());
   daily[_ds] = (daily[_ds] || 0) + 1; saveDaily();
   const c = cardById(queue[idx]);
-  if (pending === "n") { kanaBuf.push("ん"); pending = ""; }  // 句尾的 n 算 ん
+  if (pending === "n" || pending === "nn") { pre += "ん"; pending = ""; }  // 句尾的 n/nn 算 ん
   syncAns();
   const yours = norm($("ans").value);
   const ok = !gaveUp && c.ans.some(a => norm(a) === yours);
@@ -629,17 +652,23 @@ $("btn-cloud").onclick = cloudUpload;
 
 // 罗马音直输：拦截拉丁字母，转假名；其他输入（粘贴等）放行，判定时兜底
 $("ans").addEventListener("beforeinput", e => {
+  const hadSel = $("ans").selectionStart !== $("ans").selectionEnd;
+  adoptDom();  // 先对齐光标/选区：点回中间、圈选都以 DOM 现状为准
   if (e.inputType === "insertText" && /^[a-zA-Z'\-]+$/.test(e.data || "")) {
     e.preventDefault();
     for (const ch of e.data.toLowerCase()) feed(ch);
     syncAns();
   } else if (e.inputType === "deleteContentBackward") {
     e.preventDefault();
-    if (pending) pending = pending.slice(0, -1);
-    else kanaBuf.pop();
+    if (!hadSel) {  // 有选区时 adoptDom 已删掉选中部分，不再多删一个
+      if (pending) pending = pending.slice(0, -1);
+      else if (pre) pre = pre.slice(0, -1);
+    }
     syncAns();
   }
 });
+// 粘贴/输入法等绕开拦截的改动：input 事件兜底接管回模型
+$("ans").addEventListener("input", () => adoptDom());
 
 $("btn-bak").onclick = () => backupState(true);
 $("btn-res").onclick = () => { if (confirm("从云恢复会和本地合并（每张卡取更熟的进度），继续？")) restoreState(true); };
