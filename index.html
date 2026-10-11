@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-<title>KKdrill · 小夏专供 v2.0</title>
+<title>KKdrill · 小夏专供 v2.1</title>
 <style>
   :root { --bg:#1b1e23; --panel:#262a31; --fg:#e8e6e3; --dim:#9aa0a6; --accent:#e57373; --ok:#81c784; }
   * { box-sizing:border-box; }
@@ -75,7 +75,7 @@
 <body>
 <div id="app">
   <header>
-    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v2.0</small></span>
+    <span id="title">KKdrill <small style="color:var(--dim);font-size:11px;">v2.1</small></span>
     <span><span id="lv-badge" title="等级：刷 1 张＝10 EXP"></span><span id="due-badge" title="今日到期（SRS 待复习量）"></span><span id="progress"></span></span>
     <span id="hdr-btns">
       <select id="sel-size" title="每轮题量" style="background:#15171b;color:#e8e6e3;border:1px solid #3a3f47;border-radius:6px;padding:5px;font-family:inherit;">
@@ -517,19 +517,28 @@ function showProgress() {
   $("expbar-fill").style.width = Math.round(ld.exp / ld.need * 70) + "%";
   $("expbar-txt").textContent = `${ld.exp}/${ld.need}`;
   const max = Math.max(1, ...p.boxCnt);
-  $("prog-boxes").innerHTML = p.boxCnt.map((n, i) =>
-    `<div class="boxrow"><span class="lbl">${BOX_LABELS[i]}</span>` +
-    `<span class="bar" style="width:${Math.round(n / max * 70)}%"></span>` +
-    `<span class="cnt">${n}</span></div>`).join("");
-  // 每日学习量（近 14 天柱状）
+  // 竖向柱状图（SVG，比列表柱式省纵向空间）
+  const vbar = (el, items) => {
+    const H = 84, W = 30, vmax = Math.max(1, ...items.map(i => i.n));
+    let s = `<svg viewBox="0 0 ${items.length * W} ${H + 16}" style="width:100%;display:block">`;
+    items.forEach((it, i) => {
+      const h = Math.max(it.n ? 2 : 1, Math.round(it.n / vmax * (H - 14)));
+      const x = i * W + 4, y = H - h;
+      s += `<rect x="${x}" y="${y}" width="${W - 8}" height="${h}" rx="2" style="fill:${it.n ? 'var(--accent)' : '#2a2e35'}"><title>${it.title}</title></rect>`
+         + `<text x="${x + (W - 8) / 2}" y="${H + 11}" font-size="8" fill="#9aa0a6" text-anchor="middle">${it.label}</text>`;
+      if (it.n) s += `<text x="${x + (W - 8) / 2}" y="${y - 3}" font-size="8" fill="#e8e6e3" text-anchor="middle">${it.n}</text>`;
+    });
+    el.innerHTML = s + "</svg>";
+  };
+  const SHORT_LBL = ["新/错", "1天", "2天", "4天", "7天", "15天", "30天", "60天"];
+  vbar($("prog-boxes"), p.boxCnt.map((n, i) => ({ label: SHORT_LBL[i] || i, n, title: `${BOX_LABELS[i]}档：${n} 张` })));
+  // 每日学习量（近 14 天竖柱）
   const dlist = [];
   for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); dlist.push(d); }
-  const dmax = Math.max(1, ...dlist.map(d => daily[dayStr(d)] || 0));
-  $("prog-daily").innerHTML = dlist.map(d => {
+  vbar($("prog-daily"), dlist.map(d => {
     const n = daily[dayStr(d)] || 0;
-    return `<div class="boxrow"><span class="lbl">${d.getMonth()+1}/${d.getDate()}</span>` +
-      `<span class="bar" style="width:${Math.round(n / dmax * 70)}%"></span><span class="cnt">${n}</span></div>`;
-  }).join("");
+    return { label: `${d.getMonth() + 1}/${d.getDate()}`, n, title: `${dayStr(d)}：${n} 张` };
+  }));
   renderHeat();
   $("weak").innerHTML = p.weakTop.length
     ? p.weakTop.map(([t, n]) => `<li>${t} <b>×${n}</b></li>`).join("")
